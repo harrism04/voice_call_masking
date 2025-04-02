@@ -57,24 +57,34 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Response status: {response.status_code}")
     return response
 
-@app.post("/api/webhooks/mask")
-async def mask_call(request: Request):
-    # Get raw webhook data
-    raw_body = await request.body()
-    raw_json = json.loads(raw_body)
-    logger.info(f"Received call masking webhook: {raw_json}")
-    
+@app.post("/api/webhooks/vca")
+async def voice_call_action(request: Request):
+    """Handle Voice Call Action (VCA) webhooks from 8x8"""
     try:
+        # Log raw request details
+        logger.info(f"VCA Webhook received - Method: {request.method}")
+        logger.info(f"VCA Webhook URL: {request.url}")
+        logger.info(f"VCA Headers: {dict(request.headers)}")
+        
+        raw_body = await request.body()
+        logger.info(f"VCA Raw body: {raw_body}")
+        
+        raw_json = json.loads(raw_body)
+        logger.info(f"Received Voice Call Action webhook: {raw_json}")
+    
         # Extract data from VCA webhook
         payload = raw_json.get("payload", {})
         event_type = raw_json.get("eventType")
         call_status = payload.get("callStatus")
         session_id = payload.get("sessionId")
         incoming_number = payload.get("source")
-        virtual_number = payload.get("destination")  # Our virtual number
+        virtual_number = payload.get("destination")
+
+        logger.info(f"Extracted fields - event_type: {event_type}, call_status: {call_status}, session_id: {session_id}")
 
         # Only process new inbound calls
         if event_type != "CALL_ACTION" or call_status != "CALL_RECEIVED" or not session_id:
+            logger.info(f"Ignoring non-inbound call event: {event_type} - {call_status}")
             return JSONResponse(content={"status": "ignored"})
 
         # Get credentials and configuration
@@ -83,67 +93,61 @@ async def mask_call(request: Request):
         forwarded_number = os.getenv("FORWARDED_PHONE_NUMBER")
 
         if not all([api_key, subaccount_id, forwarded_number, virtual_number]):
-            raise ValueError("Missing required configuration")
+            missing = []
+            if not api_key: missing.append("EIGHT_X_EIGHT_API_KEY")
+            if not subaccount_id: missing.append("EIGHT_X_EIGHT_SUBACCOUNT_ID")
+            if not forwarded_number: missing.append("FORWARDED_PHONE_NUMBER")
+            if not virtual_number: missing.append("virtual_number from webhook")
+            error_msg = f"Missing required configuration: {', '.join(missing)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
         # Store call context
         active_calls[session_id] = {
             "caller": incoming_number,
             "virtual_number": virtual_number,
             "forwarded_number": forwarded_number,
-            "status": "bridging"
+            "status": "bridging",
+            "call_id": payload.get("callId")
         }
+        logger.info(f"Stored call context for session {session_id}: {active_calls[session_id]}")
 
         # Strip '+' from phone numbers
         virtual_number = virtual_number.lstrip('+')
         forwarded_number = forwarded_number.lstrip('+')
 
-        # Prepare the call masking request - use virtual number as source
-        request_body = {
-            "clientActionId": f"mask_{session_id}",
+        # Prepare and return the call masking callflow response
+        response_body = {
             "callflow": [
-                {
-                    "action": "say",
-                    "params": {
-                        "text": "Please wait while we connect your call.",
-                        "voiceProfile": "en-US-BenjaminRUS",
-                        "repetition": 1,
-                        "speed": 1
-                    }
-                },
                 {
                     "action": "makeCall",
                     "params": {
-                        "source": virtual_number,  # Use our virtual number as source
+                        "source": virtual_number,
                         "destination": forwarded_number
                     }
                 }
             ]
         }
-        
-        # Make API call to initiate masked call
-        api_url = f"{VOICE_API_BASE_URL}/subaccounts/{subaccount_id}/callflows"
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                api_url,
-                json=request_body,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            logger.info(f"Call Masking API Response: {response.status_code}")
-            if response.status_code >= 400:
-                raise ValueError(f"Call Masking API error: {response.text}")
+        logger.info(f"Returning VCA response with callflow: {response_body}")
                 
-            return JSONResponse(content={"status": "bridging_initiated", "sessionId": session_id})
+        return JSONResponse(
+            status_code=200,
+            content=response_body
+        )
             
+    except json.JSONDecodeError as e:
+        error_msg = f"Invalid JSON in webhook payload: {str(e)}"
+        logger.error(error_msg)
+        return JSONResponse(
+            status_code=400,
+            content={"error": error_msg}
+        )
     except Exception as e:
-        logger.error(f"Error masking call: {str(e)}")
+        error_msg = f"Error processing VCA webhook: {str(e)}"
+        logger.error(error_msg)
         return JSONResponse(
             status_code=500,
-            content={"error": str(e)}
+            content={"error": error_msg}
         )
 
 @app.post("/api/webhooks/vcs")
@@ -183,6 +187,40 @@ async def voice_call_status(request: Request):
         # Still return 200 OK to acknowledge receipt
         return JSONResponse(content={"status": "ok"}, status_code=200)
 
+@app.post("/api/webhooks/vss")
+async def voice_session_status(request: Request):
+    """Handle Voice Session Status (VSS) webhooks from 8x8"""
+    raw_body = await request.body()
+    raw_json = json.loads(raw_body)
+    logger.info(f"Received Voice Session Status webhook: {raw_json}")
+    
+    try:
+        # Return 200 OK immediately to acknowledge receipt
+        if not raw_json or "eventType" not in raw_json:
+            logger.warning("Invalid VSS webhook payload")
+            return JSONResponse(content={"status": "ok"}, status_code=200)
+        
+        # Process webhook asynchronously after responding
+        payload = raw_json.get("payload", {})
+        event_type = raw_json.get("eventType")
+        session_id = payload.get("sessionId")
+
+        # Update session tracking if we have the session
+        if session_id and session_id in active_calls:
+            active_calls[session_id].update({
+                "session_status": payload.get("sessionStatus"),
+                "event_type": event_type,
+                "last_vss_update": payload
+            })
+            logger.info(f"Session {session_id} status updated: {payload.get('sessionStatus')}")
+        
+        return JSONResponse(content={"status": "ok"}, status_code=200)
+        
+    except Exception as e:
+        logger.error(f"Error processing Voice Session Status webhook: {str(e)}")
+        # Still return 200 OK to acknowledge receipt
+        return JSONResponse(content={"status": "ok"}, status_code=200)
+
 @app.get("/health")
 async def health_check():
     """Enhanced health check endpoint for Docker healthcheck"""
@@ -216,7 +254,7 @@ async def startup_event():
     # 8x8 API details
     api_key = os.getenv("EIGHT_X_EIGHT_API_KEY")
     subaccount_id = os.getenv("EIGHT_X_EIGHT_SUBACCOUNT_ID")
-    outbound_phone = os.getenv("OUTBOUND_PHONE_NUMBER")
+    forwarded_phone = os.getenv("FORWARDED_PHONE_NUMBER")
 
     # Validate all required credentials
     missing_vars = []
@@ -224,8 +262,8 @@ async def startup_event():
         missing_vars.append("EIGHT_X_EIGHT_API_KEY")
     if not subaccount_id:
         missing_vars.append("EIGHT_X_EIGHT_SUBACCOUNT_ID")
-    if not outbound_phone:
-        missing_vars.append("OUTBOUND_PHONE_NUMBER")
+    if not forwarded_phone:
+        missing_vars.append("FORWARDED_PHONE_NUMBER")
     
     if missing_vars:
         error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
