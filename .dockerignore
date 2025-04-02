@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# Environment
+.env
+venv/
+__pycache__/
+*.pyc
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Ngrok
+ngrok.yml
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Documentation
+README.md
+api_reference.md
+examplerequests.md
+voice_requirements.md 

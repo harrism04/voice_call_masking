@@ -1,0 +1,45 @@
+# Voice Call Masking Demo Docker Compose Configuration
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-5678}:${PORT:-5678}"
+    volumes:
+      - .:/app
+    environment:
+      - PORT=${PORT:-5678}
+      - WEBHOOK_AUTH_TOKEN=${WEBHOOK_AUTH_TOKEN}
+      - EIGHT_X_EIGHT_API_KEY=${EIGHT_X_EIGHT_API_KEY}
+      - EIGHT_X_EIGHT_SUBACCOUNT_ID=${EIGHT_X_EIGHT_SUBACCOUNT_ID}
+      - FORWARDED_PHONE_NUMBER=${FORWARDED_PHONE_NUMBER}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-5678}/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  ngrok:
+    build:
+      context: .
+      dockerfile: Dockerfile.ngrok
+    ports:
+      - "4040:4040"
+    volumes:
+      - ./start_ngrok.sh:/app/start_ngrok.sh:ro
+      - ./generate_ngrok_config.sh:/app/generate_ngrok_config.sh:ro
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+      - WEBHOOK_AUTH_TOKEN=${WEBHOOK_AUTH_TOKEN}
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  default:
+    name: voice_callmasking_network

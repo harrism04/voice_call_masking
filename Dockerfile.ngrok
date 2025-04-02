@@ -1,0 +1,30 @@
+FROM alpine:3.18
+
+# Install dependencies
+RUN apk add --no-cache curl unzip bash ca-certificates netcat-openbsd
+
+# Set ngrok version
+ENV NGROK_VERSION=v3.6.0
+
+# Download and install ngrok
+RUN curl -Lo /tmp/ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-${NGROK_VERSION}-linux-amd64.zip && \
+    unzip -o /tmp/ngrok.zip -d /usr/local/bin && \
+    rm -f /tmp/ngrok.zip && \
+    chmod +x /usr/local/bin/ngrok
+
+# Create a directory for ngrok configuration
+RUN mkdir -p /etc/ngrok
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the startup scripts
+COPY start_ngrok.sh /app/start_ngrok.sh
+COPY generate_ngrok_config.sh /app/generate_ngrok_config.sh
+RUN chmod +x /app/start_ngrok.sh /app/generate_ngrok_config.sh
+
+# Expose the ngrok web interface port
+EXPOSE 4040
+
+# Set the entrypoint script
+ENTRYPOINT ["/app/start_ngrok.sh"]
