@@ -20,24 +20,27 @@ This project demonstrates call masking functionality using the 8x8 Voice API. Wh
 ## 📋 Prerequisites
 
 <details>
-  <summary>🔑 Required accounts and resources</summary>
-  
+  <summary>🔑 Required Resources</summary>
+
+  ### Development Environment
   - Docker and Docker Compose
-  - 8x8 Connect Account with:
+  - [Ngrok Account](https://ngrok.com/signup) with:
+    - [Authtoken](https://dashboard.ngrok.com/authtokens)
+    - [Static Domain](https://dashboard.ngrok.com/domains) (free tier includes 1 static URL)
+
+  ### 8x8 Connect Resources
+  - Connect Portal Account with:
     - API Key
     - Subaccount ID
-    - Virtual Number (for receiving masked calls)
-  - Ngrok account with authtoken and a static domain for local testing
-</details>
+    - Virtual Number assigned to your Subaccount
 
-<details>
-  <summary>🔄 Setting Up Ngrok</summary>
-  
-  This project requires ngrok with a static domain for webhook handling:
+  ### Test Phone Numbers
+  - Source Number: Your phone to initiate test calls
+  - Destination Number (`FORWARDED_PHONE_NUMBER`): Phone to receive forwarded calls
 
-  - **Ngrok account**: Sign up at [ngrok.com](https://ngrok.com/signup)
-  - **Static domain**: Head over to https://dashboard.ngrok.com/domains to create a static domain (Limited to 1 static url for free ngrok accounts)
-  - **Authtoken**: Go to https://dashboard.ngrok.com/authtokens to create an authtoken
+  > **Note:** In production environments:
+  > - Source represents customer/patient/passenger phones
+  > - Destination represents service provider/doctor/driver phones
 </details>
 
 ##  🚀 Setup Guide
@@ -86,37 +89,31 @@ This project demonstrates call masking functionality using the 8x8 Voice API. Wh
 The application is now ready to handle masked calls!
 </details>
 
-## 📚 API Documentation
+## 📚 Testing the Call Flow
 
-<details>
-  <summary>🔌 Webhook Endpoint</summary>
+1. **Initiate Test Call**
+   - Using your Source Number (test phone)
+   - Call the Virtual Number (assigned in 8x8 Connect Portal)
 
-`POST /api/webhooks/mask`
-   - Handles incoming call masking requests
-   - When a call is received on your virtual number, it will be forwarded to your FORWARDED_PHONE_NUMBER
-   - A brief message will be played to the caller indicating their call is being connected
-   - No authentication required for incoming webhooks from 8x8
-
-Example webhook payload from 8x8:
-```json
-{
-    "payload": {
-        "source": "+6591234567",
-        "destination": "your_virtual_number"
-    }
-}
-```
-</details>
+2. **Observe Call Masking**
+   - Call is forwarded to your Destination Number (`FORWARDED_PHONE_NUMBER`)
+   - Source Number sees the Virtual Number as caller ID
+   - Destination Number sees the Virtual Number as caller ID
+   - Complete number privacy maintained for both parties
 
 ## ℹ️ Additional Information
 
 <details>
   <summary>📝 Logging</summary>
   
-  You can view logs of inbound/outbound API requests via ngrok's Traffic Inspector by going to:
+  You can view logs of inbound/outbound API requests by going to:
   
-  1. http://localhost:4040/ (legacy but cleaner interface)
-  2. https://dashboard.ngrok.com/ → "Traffic Inspector" in the left menu
+  1. https://dashboard.ngrok.com/ → "Traffic Inspector" in the left menu (Recommended)
+  2. http://localhost:4040/ (legacy but cleaner interface, sometimes does not work).
+  3. Docker Desktop logs by clicking on the container name
+     ![image](https://github.com/user-attachments/assets/2ec97113-4f0d-405c-8b42-4954920e3484)
+
+     
 </details>
 
 <details>
@@ -129,5 +126,5 @@ Example webhook payload from 8x8:
 
 2. Getting Help:
    - Check 8x8 Voice API documentation
-   - Monitor application logs using `docker-compose logs -f`
+   - Monitor application logs in the docker container as per screenshot above, or using the command `docker-compose logs -f` in the container 
 </details>
