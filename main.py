@@ -164,43 +164,6 @@ async def voice_call_action(request: Request):
             content={"error": error_msg}
         )
 
-@app.post("/api/webhooks/vcs")
-async def voice_call_status(request: Request):
-    """Handle Voice Call Status (VCS) webhooks from 8x8"""
-    raw_body = await request.body()
-    raw_json = json.loads(raw_body)
-    logger.info(f"Received Voice Call Status webhook: {raw_json}")
-
-    try:
-        # Return 200 OK immediately to acknowledge receipt
-        if not raw_json or "eventType" not in raw_json:
-            logger.warning("Invalid VCS webhook payload")
-            return JSONResponse(content={"status": "ok"}, status_code=200)
-
-        # Process webhook asynchronously after responding
-        payload = raw_json.get("payload", {})
-        event_type = raw_json.get("eventType")
-        call_status = payload.get("callStatus")
-        session_id = payload.get("sessionId")
-        call_id = payload.get("callId")
-
-        # Update call tracking if we have the session
-        if session_id and session_id in active_calls:
-            active_calls[session_id].update({
-                "status": call_status,
-                "event_type": event_type,
-                "call_id": call_id,
-                "last_update": payload
-            })
-            logger.info(f"Call {call_id} status: {call_status} for session {session_id}")
-
-        return JSONResponse(content={"status": "ok"}, status_code=200)
-
-    except Exception as e:
-        logger.error(f"Error processing Voice Call Status webhook: {str(e)}")
-        # Still return 200 OK to acknowledge receipt
-        return JSONResponse(content={"status": "ok"}, status_code=200)
-
 @app.post("/api/webhooks/vss")
 async def voice_session_status(request: Request):
     """Handle Voice Session Status (VSS) webhooks from 8x8"""
@@ -237,9 +200,7 @@ async def voice_session_status(request: Request):
 
 @app.get("/health")
 async def health_check(request: Request):
-    """Enhanced health check endpoint for Docker healthcheck
-
-    Reduced logging for health checks to minimize log noise.
+    """
     Only logs on status changes or errors.
     """
     # Skip logging for health check requests
