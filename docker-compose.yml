@@ -16,10 +16,10 @@ services:
       - FORWARDED_PHONE_NUMBER=${FORWARDED_PHONE_NUMBER}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${PORT:-5678}/health"]
-      interval: 10s
+      interval: 60s
       timeout: 10s
-      retries: 5
-      start_period: 10s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   ngrok:

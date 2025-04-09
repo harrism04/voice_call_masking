@@ -52,9 +52,23 @@ signal.signal(signal.SIGTERM, handle_shutdown)
 # Request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    logger.info(f"Incoming request: {request.method} {request.url}")
+    # Initialize skip_logging attribute
+    request.state.skip_logging = False
+
+    # Skip logging for health check requests to reduce noise
+    if request.url.path == "/health":
+        request.state.skip_logging = True
+
+    # Only log if not a health check
+    if not request.state.skip_logging:
+        logger.info(f"Incoming request: {request.method} {request.url}")
+
     response = await call_next(request)
-    logger.info(f"Response status: {response.status_code}")
+
+    # Only log if not a health check
+    if not request.state.skip_logging:
+        logger.info(f"Response status: {response.status_code}")
+
     return response
 
 @app.post("/api/webhooks/vca")
@@ -65,13 +79,13 @@ async def voice_call_action(request: Request):
         logger.info(f"VCA Webhook received - Method: {request.method}")
         logger.info(f"VCA Webhook URL: {request.url}")
         logger.info(f"VCA Headers: {dict(request.headers)}")
-        
+
         raw_body = await request.body()
         logger.info(f"VCA Raw body: {raw_body}")
-        
+
         raw_json = json.loads(raw_body)
         logger.info(f"Received Voice Call Action webhook: {raw_json}")
-    
+
         # Extract data from VCA webhook
         payload = raw_json.get("payload", {})
         event_type = raw_json.get("eventType")
@@ -129,12 +143,12 @@ async def voice_call_action(request: Request):
             ]
         }
         logger.info(f"Returning VCA response with callflow: {response_body}")
-                
+
         return JSONResponse(
             status_code=200,
             content=response_body
         )
-            
+
     except json.JSONDecodeError as e:
         error_msg = f"Invalid JSON in webhook payload: {str(e)}"
         logger.error(error_msg)
@@ -156,13 +170,13 @@ async def voice_call_status(request: Request):
     raw_body = await request.body()
     raw_json = json.loads(raw_body)
     logger.info(f"Received Voice Call Status webhook: {raw_json}")
-    
+
     try:
         # Return 200 OK immediately to acknowledge receipt
         if not raw_json or "eventType" not in raw_json:
             logger.warning("Invalid VCS webhook payload")
             return JSONResponse(content={"status": "ok"}, status_code=200)
-        
+
         # Process webhook asynchronously after responding
         payload = raw_json.get("payload", {})
         event_type = raw_json.get("eventType")
@@ -179,9 +193,9 @@ async def voice_call_status(request: Request):
                 "last_update": payload
             })
             logger.info(f"Call {call_id} status: {call_status} for session {session_id}")
-        
+
         return JSONResponse(content={"status": "ok"}, status_code=200)
-        
+
     except Exception as e:
         logger.error(f"Error processing Voice Call Status webhook: {str(e)}")
         # Still return 200 OK to acknowledge receipt
@@ -193,13 +207,13 @@ async def voice_session_status(request: Request):
     raw_body = await request.body()
     raw_json = json.loads(raw_body)
     logger.info(f"Received Voice Session Status webhook: {raw_json}")
-    
+
     try:
         # Return 200 OK immediately to acknowledge receipt
         if not raw_json or "eventType" not in raw_json:
             logger.warning("Invalid VSS webhook payload")
             return JSONResponse(content={"status": "ok"}, status_code=200)
-        
+
         # Process webhook asynchronously after responding
         payload = raw_json.get("payload", {})
         event_type = raw_json.get("eventType")
@@ -213,34 +227,51 @@ async def voice_session_status(request: Request):
                 "last_vss_update": payload
             })
             logger.info(f"Session {session_id} status updated: {payload.get('sessionStatus')}")
-        
+
         return JSONResponse(content={"status": "ok"}, status_code=200)
-        
+
     except Exception as e:
         logger.error(f"Error processing Voice Session Status webhook: {str(e)}")
         # Still return 200 OK to acknowledge receipt
         return JSONResponse(content={"status": "ok"}, status_code=200)
 
 @app.get("/health")
-async def health_check():
-    """Enhanced health check endpoint for Docker healthcheck"""
+async def health_check(request: Request):
+    """Enhanced health check endpoint for Docker healthcheck
+
+    Reduced logging for health checks to minimize log noise.
+    Only logs on status changes or errors.
+    """
+    # Skip logging for health check requests
+    request.state.skip_logging = True
+
     try:
         # Check if required environment variables are set
         required_vars = ["EIGHT_X_EIGHT_API_KEY", "EIGHT_X_EIGHT_SUBACCOUNT_ID", "FORWARDED_PHONE_NUMBER"]
         missing_vars = [var for var in required_vars if not os.getenv(var)]
-        
+
         if missing_vars:
+            # Only log if status changed from previous state
+            if health_status.get("status") != "misconfigured":
+                logger.warning(f"Health check failed: Missing environment variables {missing_vars}")
+
             health_status["status"] = "misconfigured"
             health_status["missing_vars"] = missing_vars
             return JSONResponse(
                 status_code=503,
                 content=health_status
             )
-        
+
+        # Only log if status changed from previous state
+        if health_status.get("status") != "healthy":
+            logger.info("Health check status changed to healthy")
+
         health_status["status"] = "healthy"
         return health_status
-        
+
     except Exception as e:
+        # Always log exceptions
+        logger.error(f"Health check error: {str(e)}")
         health_status["status"] = "unhealthy"
         health_status["error"] = str(e)
         return JSONResponse(
@@ -264,7 +295,7 @@ async def startup_event():
         missing_vars.append("EIGHT_X_EIGHT_SUBACCOUNT_ID")
     if not forwarded_phone:
         missing_vars.append("FORWARDED_PHONE_NUMBER")
-    
+
     if missing_vars:
         error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
         logger.error(error_msg)
@@ -282,8 +313,8 @@ if __name__ == "__main__":
     import uvicorn
     logger.info(f"Starting server on port {PORT}")
     uvicorn.run(
-        app, 
-        host="0.0.0.0", 
+        app,
+        host="0.0.0.0",
         port=PORT,
         log_config=None  # Use our logging config
     )
