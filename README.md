@@ -1,12 +1,14 @@
-# 📞 8x8 Voice API (CPaaS) - Call Masking Demo
+<h1 align="center">📞 8x8 Voice API (CPaaS) - Call Masking Demo</h1>
 
+<p align="center">
 This project demonstrates call masking functionality using the 8x8 Voice API. When a customer calls your virtual number, the call is masked and forwarded to your actual phone number, protecting your privacy while maintaining communication.
+</p>
 
 ## 📋 Table of Contents
 - [Features](#-features)
 - [Prerequisites](#-prerequisites)
 - [Setup Guide](#-setup-guide)
-- [API Documentation](#-api-documentation)
+- [Try it out!](#-try-it-out)
 - [Additional Information](#ℹ️-additional-information)
 
 ## ✨ Features
@@ -89,17 +91,24 @@ This project demonstrates call masking functionality using the 8x8 Voice API. Wh
 The application is now ready to handle masked calls!
 </details>
 
-## 📚 Testing the Call Flow
+## 📚 Try it out!
+
+<details>
+  <summary>Experiencing Call Masking flow</summary>
 
 1. **Initiate Test Call**
-   - Using your Source Number (test phone)
+   - Using your Source Number (test phone). In production this will be the client/service provider whose privacy need to be protected.
    - Call the Virtual Number (assigned in 8x8 Connect Portal)
 
 2. **Observe Call Masking**
-   - Call is forwarded to your Destination Number (`FORWARDED_PHONE_NUMBER`)
+   - Call is forwarded to your Destination Number (`FORWARDED_PHONE_NUMBER`) - this could be a spare phone, a colleague, etc. In production this will be the service provider/client whose privacy need to be protected.
    - Source Number sees the Virtual Number as caller ID
    - Destination Number sees the Virtual Number as caller ID
    - Complete number privacy maintained for both parties
+  
+  > **Note:** In production environments:
+  > - Source represents customer/patient/passenger phones
+  > - Destination represents service provider/doctor/driver phones
 
 ## ℹ️ Additional Information
 
