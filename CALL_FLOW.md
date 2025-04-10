@@ -1,6 +1,6 @@
 # Call Masking Flow
 
-This diagram illustrates the call masking flow implemented in this service.
+This diagram illustrates the actual implementation of call masking in this service.
 
 ```mermaid
 %%{init: {
@@ -20,51 +20,49 @@ This diagram illustrates the call masking flow implemented in this service.
   }
 }}%%
 sequenceDiagram
-    participant Caller as Client
-    participant ProxyNumber as 8x8 Virtual Number
-    participant Server as Integration Middleware
-    participant VoiceAPI as 8x8 Voice API
-    participant Recipient as Recipient
+    participant Source as Source Number
+    participant VNumber as Virtual Number
+    participant Server as FastAPI Server (main.py)
+    participant Voice8x8 as 8x8 Voice API
+    participant Dest as Destination Number
 
     rect rgb(100, 150, 220)
-        note right of Caller: 1. Call Initiation
-        Caller->>ProxyNumber: Calls virtual number
-        ProxyNumber->>Server: Webhook: CALL_RECEIVED
-        Note over Server: Validates webhook payload
-        Server->>VoiceAPI: Request call masking
-        Note over VoiceAPI: Plays waiting message
+        note right of Source: 1. Call Initiation
+        Source->>VNumber: Dials virtual number
+        VNumber->>Server: POST /api/webhooks/vca
+        Note over Server: Stores call context in active_calls
+        Server->>Voice8x8: Returns makeCall action
     end
 
     rect rgb(100, 180, 120)
-        note right of VoiceAPI: 2. Call Connection
-        VoiceAPI->>Recipient: Makes outbound call
-        Note over VoiceAPI: Bridges both calls
-        Recipient-->>Caller: Connected call
-        Note over Caller,Recipient: Masked conversation
+        note right of Voice8x8: 2. Call Bridging
+        Voice8x8->>Dest: Outbound call from virtual number
+        Note over Voice8x8: Bridges calls
+        Note over Source,Dest: Masked conversation in progress
     end
 
     rect rgb(200, 120, 120)
-        note right of Server: 3. Call Monitoring
-        Note right of Server: Real numbers hidden<br/>from both parties
-        VoiceAPI-->>Server: Call status updates
-        Server->>Server: Tracks call in active_calls
+        note right of Voice8x8: 3. Call Completion
+        Voice8x8->>Server: POST /api/webhooks/vss
+        Note over Server: Updates final call status
     end
 ```
 
-## Flow Description
+## Implementation Details
 
-1. A caller dials the virtual number assigned to the service
-2. The service receives a webhook notification for the incoming call
-3. The server validates the call information and initiates call masking
-4. Voice API plays a waiting message to the caller
-5. The service makes an outbound call to the forwarded number
-6. Both calls are bridged while maintaining number privacy
-7. The conversation proceeds with both parties' real numbers masked
-8. The service tracks active calls and their status
+1. **Call Initiation** (`/api/webhooks/vca`)
+   - Client makes call to the virtual number
+   - Receive incoming call webhook from 8x8
+   - Validate required configuration (API key, subaccount, numbers)
+   - Store call context in `active_calls` dictionary
+   - Return callflow with `makeCall` action
 
-## Key Components
+2. **Call Management**
+   - Virtual number used as source for outbound call
+   - Both parties see only the virtual number
 
-- **Virtual Number**: The public-facing number that callers dial
-- **Server**: FastAPI service handling webhook events and call control
-- **Voice API**: 8x8 Voice API handling call execution and bridging
-- **Forwarded Number**: The final destination number (kept private)
+3. **Call Completion** (`/api/webhooks/vss`)
+   - Either party hangs up
+   - Receive final call status webhook
+   - Update call record in `active_calls`
+   - Track call completion status
